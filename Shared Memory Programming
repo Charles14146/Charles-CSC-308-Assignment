@@ -1,0 +1,98 @@
+/**
+ * @file session4_shared_memory.c
+ * @brief Practical Session 4: Shared Memory Programming with POSIX Semaphores
+ * * Objective: Implement inter-process communication using shared memory segments
+ * synchronized via semaphores to prevent dirty cross-process reads/writes.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/wait.h>
+#include <semaphore.h>
+#include <fcntl.h>
+
+#define SHM_SIZE 1024
+#define SHM_KEY 0x1234
+#define SEM_NAME "/shm_sync_sem"
+
+int main() {
+    int shmid;
+    char *shm_ptr;
+    pid_t pid;
+    sem_t *sem;
+
+    // 1. Create shared memory segment
+    shmid = shmget(SHM_KEY, SHM_SIZE, IPC_CREAT | 0666);
+    if (shmid < 0) {
+        perror("shmget failed");
+        exit(1);
+    }
+
+    // Initialize a named semaphore to synchronize parent and child
+    sem = sem_open(SEM_NAME, O_CREAT, 0666, 0);
+    if (sem == SEM_FAILED) {
+        perror("sem_open failed");
+        exit(1);
+    }
+
+    pid = fork();
+
+    if (pid < 0) {
+        perror("fork failed");
+        exit(1);
+    } 
+    else if (pid == 0) {
+        /** Child Process (Writer) **/
+        // 2. Attach memory to child process workspace
+        shm_ptr = (char *)shmat(shmid, NULL, 0);
+        if (shm_ptr == (char *)-1) {
+            perror("Child shmat failed");
+            exit(1);
+        }
+
+        printf("[Child Process] Writing data to shared memory segment...\n");
+        // 3. Write data
+        strncpy(shm_ptr, "Hello from your Child Process! Shared Memory is working perfectly.", SHM_SIZE);
+        
+        // Notify parent process via semaphore post operation
+        sem_post(sem);
+
+        // 5. Detach child process workspace view
+        shmdt(shm_ptr);
+        sem_close(sem);
+        exit(0);
+    } 
+    else {
+        /** Parent Process (Reader) **/
+        // 2. Attach memory to parent process workspace
+        shm_ptr = (char *)shmat(shmid, NULL, 0);
+        if (shm_ptr == (char *)-1) {
+            perror("Parent shmat failed");
+            exit(1);
+        }
+
+        // 4. Use semaphore synchronization to safely await Child payload completion
+        printf("[Parent Process] Waiting for child to finalize write execution...\n");
+        sem_wait(sem);
+
+        // Read and process the payload
+        printf("[Parent Process] Read Data Output: \"%s\"\n", shm_ptr);
+
+        // Wait for child sequence termination context
+        wait(NULL);
+
+        // 5. Clean up allocations: detach, destroy tracking context and unlink
+        shmdt(shm_ptr);
+        shmctl(shmid, IPC_RMID, NULL);
+        sem_close(sem);
+        sem_unlink(SEM_NAME);
+        
+        printf("[Parent Process] Cleaned up tracking blocks and unlinked segment nodes successfully.\n");
+    }
+
+    return 0;
+}

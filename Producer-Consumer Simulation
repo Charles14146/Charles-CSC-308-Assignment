@@ -1,0 +1,88 @@
+/**
+ * @file session2_producer_consumer.c
+ * @brief Practical Session 2: Producer-Consumer Simulation
+ * * Objective: Implement the Producer-Consumer problem using POSIX semaphores 
+ * over a fixed circular buffer.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
+
+#define BUFFER_SIZE 5
+#define TOTAL_ITEMS 15
+
+int buffer[BUFFER_SIZE];
+int in = 0;
+int out = 0;
+
+// Semaphores
+sem_t mutex_sem; // Controls critical section entry (Binary)
+sem_t empty;     // Counts empty buffer slots
+sem_t full;      // Counts full buffer slots
+
+void* producer(void* arg) {
+    for (int i = 1; i <= TOTAL_ITEMS; i++) {
+        // Simulate varying speed of item generation
+        usleep((rand() % 500) * 1000); 
+
+        sem_wait(&empty); // Decrement empty slots (block if 0)
+        sem_wait(&mutex_sem); // Enter critical section
+
+        // Add item to circular buffer
+        buffer[in] = i;
+        printf("[Producer] Produced Item %d at slot %d\n", i, in);
+        in = (in + 1) % BUFFER_SIZE;
+
+        sem_post(&mutex_sem); // Leave critical section
+        sem_post(&full);  // Increment full slots
+    }
+    return NULL;
+}
+
+void* consumer(void* arg) {
+    for (int i = 1; i <= TOTAL_ITEMS; i++) {
+        // Simulate varying consumer consumption speeds
+        usleep((rand() % 800) * 1000); 
+
+        sem_wait(&full);  // Decrement full slots (block if 0)
+        sem_wait(&mutex_sem); // Enter critical section
+
+        // Remove item from circular buffer
+        int item = buffer[out];
+        printf("  [Consumer] Consumed Item %d from slot %d\n", item, out);
+        out = (out + 1) % BUFFER_SIZE;
+
+        sem_post(&mutex_sem); // Leave critical section
+        sem_post(&empty); // Increment empty slots
+    }
+    return NULL;
+}
+
+int main() {
+    pthread_t prod_thread, cons_thread;
+    srand(time(NULL));
+
+    // Initialize Semaphores
+    sem_init(&mutex_sem, 0, 1);           // mutex = 1
+    sem_init(&empty, 0, BUFFER_SIZE);     // empty = N (Buffer size)
+    sem_init(&full, 0, 0);                 // full = 0
+
+    // Create Producer and Consumer Threads
+    pthread_create(&prod_thread, NULL, producer, NULL);
+    pthread_create(&cons_thread, NULL, consumer, NULL);
+
+    // Join Threads
+    pthread_join(prod_thread, NULL);
+    pthread_join(cons_thread, NULL);
+
+    // Cleanup
+    sem_destroy(&mutex_sem);
+    sem_destroy(&empty);
+    sem_destroy(&full);
+
+    printf("\nSimulation Completed Successfully.\n");
+    return 0;
+}

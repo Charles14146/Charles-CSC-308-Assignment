@@ -1,0 +1,59 @@
+/**
+ * @file session3_counting_semaphore.c
+ * @brief Practical Session 3: Counting Semaphore Implementation
+ * * Objective: Experiment with counting semaphores to manage resource pools,
+ * allowing a configurable window of threads to access a section simultaneously.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
+
+#define TOTAL_THREADS 7
+#define MAX_CONCURRENT_ACCESS 3 // Counting Semaphore Limit
+
+sem_t pool_semaphore;
+
+void* access_pool(void* arg) {
+    int thread_id = *(int*)arg;
+
+    printf("Thread %d is waiting to access the resource pool...\n", thread_id);
+    
+    // Protect shared pool with counting semaphore window
+    sem_wait(&pool_semaphore); 
+    
+    printf("▶ Thread %d has GRANTED access to the resource pool.\n", thread_id);
+    
+    // Simulate active resource usage inside the critical pool zone
+    sleep(2); 
+    
+    printf("◀ Thread %d is leaving and releasing a slot.\n", thread_id);
+    sem_post(&pool_semaphore);
+
+    free(arg);
+    return NULL;
+}
+
+int main() {
+    pthread_t threads[TOTAL_THREADS];
+
+    // Initialize counting semaphore to allow 3 threads simultaneously
+    sem_init(&pool_semaphore, 0, MAX_CONCURRENT_ACCESS);
+
+    printf("Initializing Resource Pool with Capacity = %d\n\n", MAX_CONCURRENT_ACCESS);
+
+    for (int i = 0; i < TOTAL_THREADS; i++) {
+        int* id = malloc(sizeof(int));
+        *id = i + 1;
+        pthread_create(&threads[i], NULL, access_pool, id);
+    }
+
+    for (int i = 0; i < TOTAL_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    sem_destroy(&pool_semaphore);
+    return 0;
+}

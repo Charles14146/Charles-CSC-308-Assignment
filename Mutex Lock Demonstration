@@ -1,0 +1,77 @@
+/**
+ * @file session1_mutex.c
+ * @brief Practical Session 1: Mutex Lock Demonstration
+ * * Objective: Demonstrate mutual exclusion using pthread mutex locks.
+ * Compare results WITH and WITHOUT the mutex to observe non-deterministic behavior.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#define NUM_THREADS 10
+#define INCREMENTS_PER_THREAD 100000
+
+// Toggle this macro to 0 to observe the race condition (Without Mutex)
+#define USE_MUTEX 1
+
+long long shared_counter = 0;
+pthread_mutex_t lock;
+
+void* increment_counter(void* arg) {
+    for (int i = 0; i < INCREMENTS_PER_THREAD; i++) {
+        if (USE_MUTEX) {
+            pthread_mutex_lock(&lock);
+        }
+        
+        // Critical Section
+        shared_counter++;
+        
+        if (USE_MUTEX) {
+            pthread_mutex_unlock(&lock);
+        }
+    }
+    return NULL;
+}
+
+int main() {
+    pthread_t threads[NUM_THREADS];
+
+    // 1. Initialize the pthread_mutex_t variable
+    if (pthread_mutex_init(&lock, NULL) != 0) {
+        printf("\n Mutex init failed\n");
+        return 1;
+    }
+
+    printf("Starting %d threads, each incrementing the counter %d times...\n", NUM_THREADS, INCREMENTS_PER_THREAD);
+    printf("Mutex Protection: %s\n", USE_MUTEX ? "ENABLED" : "DISABLED");
+
+    // 2. Create multiple threads
+    for (int i = 0; i < NUM_THREADS; i++) {
+        if (pthread_create(&threads[i], NULL, increment_counter, NULL) != 0) {
+            perror("Failed to create thread");
+            return 1;
+        }
+    }
+
+    // Join threads
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    // 4 & 5. Observe and Compare Results
+    long long expected_value = (long long)NUM_THREADS * INCREMENTS_PER_THREAD;
+    printf("\n--- Results ---\n");
+    printf("Expected Counter Value: %lld\n", expected_value);
+    printf("Actual Counter Value:   %lld\n", shared_counter);
+    
+    if (shared_counter == expected_value) {
+        printf("Status: SUCCESS (Deterministic & Correct)\n");
+    } else {
+        printf("Status: FAILURE (Race condition detected! Counter < Expected)\n");
+    }
+
+    // Clean up
+    pthread_mutex_destroy(&lock);
+    return 0;
+}
